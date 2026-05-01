@@ -9,6 +9,9 @@
 <body>
   <audio id="alertSound" src="/soft_square_buzzer_240Hz.mp3" preload="auto"></audio>
 
+  <div class="top-blue"></div>
+  <div id="topBar" class="status-grid"></div>
+
   <div class="app">
     <header>
       <h1>Final Controller</h1>
@@ -65,7 +68,7 @@
 
     <section class="panel">
       <button id="sendBtn" class="send-btn">Send To Local Control</button>
-      <button id="resetSelectedBtn" class="danger-btn">Reset Selected Aircraft</button>
+      <button id="resetSelectedBtn" class="danger-btn">Final Reset Selected Aircraft</button>
       <button id="resetAllBtn" class="danger-btn">Reset All</button>
     </section>
 
@@ -85,6 +88,7 @@
     let selectedIntention = "";
     let selectedMarker = "";
 
+    const topBar = document.getElementById("topBar");
     const aircraftButtons = document.getElementById("aircraftButtons");
     const typeButtons = document.getElementById("typeButtons");
     const intentionButtons = document.getElementById("intentionButtons");
@@ -101,6 +105,68 @@
     let soundEnabled = false;
     let buzzerInterval = null;
     let lastFinalAlertVersions = {};
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function localTime() {
+      return new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    function zuluTime() {
+      const now = new Date();
+      return `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}Z`;
+    }
+
+    function renderTopBar(state) {
+      topBar.innerHTML = `
+        <div class="cell">
+          <span class="label">Airport</span>
+          <span class="value">${state.airport || "----"}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Wind Direction / Knots</span>
+          <span class="value">${state.wind || "N/A"}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Altimeter</span>
+          <span class="value">${state.altimeter || "N/A"}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Local Time</span>
+          <span class="value" id="localTime">${localTime()}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Zulu Time</span>
+          <span class="value" id="zuluTime">${zuluTime()}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Duty Runway</span>
+          <span class="value">${state.selectedRunway || "N/A"}</span>
+        </div>
+        <div class="metar-cell">
+          <span class="label">METAR</span>
+          <span class="metar-text">${state.rawMetar || "N/A"}</span>
+        </div>
+      `;
+    }
+
+    setInterval(() => {
+      const localTimeEl = document.getElementById("localTime");
+      const zuluTimeEl = document.getElementById("zuluTime");
+
+      if (localTimeEl) localTimeEl.textContent = localTime();
+      if (zuluTimeEl) zuluTimeEl.textContent = zuluTime();
+    }, 1000);
+
+    socket.on("airportState", (state) => {
+      renderTopBar(state);
+    });
 
     enableSoundBtn.addEventListener("click", async () => {
       try {
@@ -169,7 +235,7 @@
     });
 
     resetSelectedBtn.addEventListener("click", () => {
-      socket.emit("resetAircraft", selectedAircraft);
+      socket.emit("finalResetAircraft", selectedAircraft);
     });
 
     resetAllBtn.addEventListener("click", () => {
@@ -249,6 +315,8 @@
           statusText = "CLEARED";
         } else if (ac.status === "wave-off") {
           statusText = "WAVE OFF";
+        } else if (ac.status === "reset-pending") {
+          statusText = "RESET REQUESTED";
         } else if (ac.status === "pending") {
           statusText = "PENDING";
         } else {

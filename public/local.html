@@ -9,10 +9,13 @@
 <body>
   <audio id="alertSound" src="/soft_square_buzzer_240Hz.mp3" preload="auto"></audio>
 
+  <div class="top-blue"></div>
+  <div id="topBar" class="status-grid"></div>
+
   <div class="app">
     <header>
       <h1>Local Control</h1>
-      <p>Acknowledge position updates, clear aircraft, or wave off.</p>
+      <p>Choose airport/runway, acknowledge position updates, clear aircraft, wave off, or request reset.</p>
 
       <div class="header-actions">
         <button id="enableSoundBtn" class="send-btn">Enable Sound</button>
@@ -22,6 +25,16 @@
         </div>
       </div>
     </header>
+
+    <section class="panel">
+      <h2>Airport Setup</h2>
+      <div class="airport-control-row">
+        <input id="airportInput" maxlength="4" placeholder="KNBC" autocomplete="off" />
+        <button id="loadAirportBtn" class="send-btn">Load Airport</button>
+        <button id="refreshMetarBtn" class="send-btn">Refresh METAR</button>
+      </div>
+      <div id="airportError" class="airport-error"></div>
+    </section>
 
     <section class="runway-display">
       <div class="marker-column">
@@ -60,6 +73,12 @@
     const socket = io();
     socket.emit("joinRole", "local");
 
+    const topBar = document.getElementById("topBar");
+    const airportInput = document.getElementById("airportInput");
+    const loadAirportBtn = document.getElementById("loadAirportBtn");
+    const refreshMetarBtn = document.getElementById("refreshMetarBtn");
+    const airportError = document.getElementById("airportError");
+
     const localBoard = document.getElementById("localBoard");
     const resetAllBtn = document.getElementById("resetAllBtn");
     const enableSoundBtn = document.getElementById("enableSoundBtn");
@@ -74,6 +93,100 @@
     let soundEnabled = false;
     let buzzerInterval = null;
     let lastLocalAlertVersions = {};
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function localTime() {
+      return new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    function zuluTime() {
+      const now = new Date();
+      return `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}Z`;
+    }
+
+    function renderTopBar(state) {
+      airportInput.value = state.airport || "";
+
+      const runwayOptions = state.runways.length
+        ? state.runways
+            .map((runway) => {
+              const selected = runway === state.selectedRunway ? "selected" : "";
+              return `<option value="${runway}" ${selected}>${runway}</option>`;
+            })
+            .join("")
+        : `<option value="">N/A</option>`;
+
+      topBar.innerHTML = `
+        <div class="cell">
+          <span class="label">Airport</span>
+          <span class="value">${state.airport || "----"}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Wind Direction / Knots</span>
+          <span class="value">${state.wind || "N/A"}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Altimeter</span>
+          <span class="value">${state.altimeter || "N/A"}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Local Time</span>
+          <span class="value" id="localTime">${localTime()}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Zulu Time</span>
+          <span class="value" id="zuluTime">${zuluTime()}</span>
+        </div>
+        <div class="cell">
+          <span class="label">Duty Runway</span>
+          <select id="dutyRunway">${runwayOptions}</select>
+        </div>
+        <div class="metar-cell">
+          <span class="label">METAR</span>
+          <span class="metar-text">${state.rawMetar || "N/A"}</span>
+        </div>
+      `;
+
+      const dutyRunway = document.getElementById("dutyRunway");
+      dutyRunway.addEventListener("change", () => {
+        socket.emit("setRunway", dutyRunway.value);
+      });
+
+      airportError.textContent = state.error || "";
+    }
+
+    setInterval(() => {
+      const localTimeEl = document.getElementById("localTime");
+      const zuluTimeEl = document.getElementById("zuluTime");
+
+      if (localTimeEl) localTimeEl.textContent = localTime();
+      if (zuluTimeEl) zuluTimeEl.textContent = zuluTime();
+    }, 1000);
+
+    socket.on("airportState", (state) => {
+      renderTopBar(state);
+    });
+
+    loadAirportBtn.addEventListener("click", () => {
+      socket.emit("setAirport", airportInput.value);
+    });
+
+    refreshMetarBtn.addEventListener("click", () => {
+      socket.emit("refreshMetar");
+    });
+
+    airportInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        socket.emit("setAirport", airportInput.value);
+      }
+    });
 
     enableSoundBtn.addEventListener("click", async () => {
       try {
@@ -173,6 +286,8 @@
           statusText = "CLEARED";
         } else if (ac.status === "wave-off") {
           statusText = "WAVE OFF";
+        } else if (ac.status === "reset-pending") {
+          statusText = "RESET WAITING FINAL ACK";
         } else if (ac.status === "pending") {
           statusText = "PENDING";
         } else {
@@ -237,7 +352,7 @@
 
       document.querySelectorAll(".reset-btn").forEach((button) => {
         button.addEventListener("click", () => {
-          socket.emit("resetAircraft", button.dataset.id);
+          socket.emit("localRequestReset", button.dataset.id);
         });
       });
     }
@@ -249,7 +364,7 @@
       marker0.innerHTML = "";
 
       Object.values(aircraft).forEach((ac) => {
-        if (!ac.marker || ac.status === "empty" || ac.status === "cleared") {
+        if (!ac.marker || ac.status === "empty") {
           return;
         }
 
@@ -260,6 +375,7 @@
           <strong>${ac.id}</strong>
           <span>${ac.type}</span>
           <span>${ac.intention}</span>
+          <span>${ac.status.toUpperCase()}</span>
           ${ac.localNeedsAck ? `<span class="small-alert">ACK POSITION</span>` : ""}
         `;
 
