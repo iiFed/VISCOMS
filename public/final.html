@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Final Controller</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <audio id="alertSound" src="/soft_square_buzzer_240Hz.mp3" preload="auto"></audio>
+
+  <div class="app">
+    <header>
+      <h1>Final Controller</h1>
+      <p>Send aircraft position updates and acknowledge Local Control actions.</p>
+
+      <div class="header-actions">
+        <button id="enableSoundBtn" class="send-btn">Enable Sound</button>
+
+        <div id="localOnlineStatus" class="online-status offline">
+          Local Control: OFFLINE
+        </div>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Aircraft Slot</h2>
+      <div class="button-row" id="aircraftButtons">
+        <button class="select-btn active" data-value="AC1">AC1</button>
+        <button class="select-btn" data-value="AC2">AC2</button>
+        <button class="select-btn" data-value="AC3">AC3</button>
+        <button class="select-btn" data-value="AC4">AC4</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Aircraft Type</h2>
+      <div class="button-row" id="typeButtons">
+        <button class="select-btn" data-value="JET">JET</button>
+        <button class="select-btn" data-value="PROP">PROP</button>
+        <button class="select-btn" data-value="HEAVY">HEAVY</button>
+        <button class="select-btn" data-value="HELI">HELI</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Landing Intention</h2>
+      <div class="button-row" id="intentionButtons">
+        <button class="select-btn" data-value="FULL STOP">FULL STOP</button>
+        <button class="select-btn" data-value="TOUCH AND GO">TOUCH AND GO</button>
+        <button class="select-btn" data-value="LOW APPROACH">LOW APPROACH</button>
+        <button class="select-btn" data-value="OPTION">OPTION</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Position Marker</h2>
+      <div class="button-row" id="markerButtons">
+        <button class="select-btn marker-btn" data-value="∞">∞</button>
+        <button class="select-btn marker-btn" data-value="7">7</button>
+        <button class="select-btn marker-btn" data-value="3">3</button>
+        <button class="select-btn marker-btn" data-value="0">0</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <button id="sendBtn" class="send-btn">Send To Local Control</button>
+      <button id="resetSelectedBtn" class="danger-btn">Reset Selected Aircraft</button>
+      <button id="resetAllBtn" class="danger-btn">Reset All</button>
+    </section>
+
+    <section class="panel">
+      <h2>Final Controller Board</h2>
+      <div id="board" class="board"></div>
+    </section>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    socket.emit("joinRole", "final");
+
+    let selectedAircraft = "AC1";
+    let selectedType = "";
+    let selectedIntention = "";
+    let selectedMarker = "";
+
+    const aircraftButtons = document.getElementById("aircraftButtons");
+    const typeButtons = document.getElementById("typeButtons");
+    const intentionButtons = document.getElementById("intentionButtons");
+    const markerButtons = document.getElementById("markerButtons");
+    const sendBtn = document.getElementById("sendBtn");
+    const resetSelectedBtn = document.getElementById("resetSelectedBtn");
+    const resetAllBtn = document.getElementById("resetAllBtn");
+    const board = document.getElementById("board");
+
+    const enableSoundBtn = document.getElementById("enableSoundBtn");
+    const alertSound = document.getElementById("alertSound");
+    const localOnlineStatus = document.getElementById("localOnlineStatus");
+
+    let soundEnabled = false;
+    let buzzerInterval = null;
+    let lastFinalAlertVersions = {};
+
+    enableSoundBtn.addEventListener("click", async () => {
+      try {
+        soundEnabled = true;
+        alertSound.volume = 1.0;
+        await alertSound.play();
+        alertSound.pause();
+        alertSound.currentTime = 0;
+        enableSoundBtn.textContent = "Sound Enabled";
+        enableSoundBtn.disabled = true;
+      } catch (error) {
+        alert("Browser blocked sound. Click Enable Sound again.");
+      }
+    });
+
+    socket.on("onlineStatus", (status) => {
+      if (status.localOnline) {
+        localOnlineStatus.textContent = "Local Control: ONLINE";
+        localOnlineStatus.className = "online-status online";
+      } else {
+        localOnlineStatus.textContent = "Local Control: OFFLINE";
+        localOnlineStatus.className = "online-status offline";
+      }
+    });
+
+    function setupSelection(container, callback) {
+      container.addEventListener("click", (event) => {
+        if (!event.target.matches("button")) return;
+
+        const buttons = container.querySelectorAll("button");
+        buttons.forEach((btn) => btn.classList.remove("active"));
+
+        event.target.classList.add("active");
+        callback(event.target.dataset.value);
+      });
+    }
+
+    setupSelection(aircraftButtons, (value) => {
+      selectedAircraft = value;
+    });
+
+    setupSelection(typeButtons, (value) => {
+      selectedType = value;
+    });
+
+    setupSelection(intentionButtons, (value) => {
+      selectedIntention = value;
+    });
+
+    setupSelection(markerButtons, (value) => {
+      selectedMarker = value;
+    });
+
+    sendBtn.addEventListener("click", () => {
+      if (!selectedAircraft || !selectedType || !selectedIntention || !selectedMarker) {
+        alert("Select aircraft, type, intention, and marker first.");
+        return;
+      }
+
+      socket.emit("finalUpdate", {
+        id: selectedAircraft,
+        type: selectedType,
+        intention: selectedIntention,
+        marker: selectedMarker
+      });
+    });
+
+    resetSelectedBtn.addEventListener("click", () => {
+      socket.emit("resetAircraft", selectedAircraft);
+    });
+
+    resetAllBtn.addEventListener("click", () => {
+      const confirmReset = confirm("Reset all aircraft?");
+      if (confirmReset) {
+        socket.emit("resetAll");
+      }
+    });
+
+    socket.on("aircraftState", (aircraft) => {
+      renderBoard(aircraft);
+      handleFinalAlerts(aircraft);
+    });
+
+    function handleFinalAlerts(aircraft) {
+      const activeAlerts = Object.values(aircraft).filter((ac) => ac.finalNeedsAck);
+
+      Object.values(aircraft).forEach((ac) => {
+        if (!lastFinalAlertVersions[ac.id]) {
+          lastFinalAlertVersions[ac.id] = 0;
+        }
+
+        if (ac.finalAlertVersion > lastFinalAlertVersions[ac.id]) {
+          lastFinalAlertVersions[ac.id] = ac.finalAlertVersion;
+          playBuzzerOnce();
+        }
+      });
+
+      if (activeAlerts.length > 0) {
+        startRepeatingBuzzer();
+      } else {
+        stopRepeatingBuzzer();
+      }
+    }
+
+    function playBuzzerOnce() {
+      if (!soundEnabled) return;
+
+      alertSound.pause();
+      alertSound.currentTime = 0;
+      alertSound.play().catch(() => {});
+    }
+
+    function startRepeatingBuzzer() {
+      if (!soundEnabled) return;
+      if (buzzerInterval) return;
+
+      buzzerInterval = setInterval(() => {
+        playBuzzerOnce();
+      }, 1000);
+    }
+
+    function stopRepeatingBuzzer() {
+      if (buzzerInterval) {
+        clearInterval(buzzerInterval);
+        buzzerInterval = null;
+      }
+
+      alertSound.pause();
+      alertSound.currentTime = 0;
+    }
+
+    function renderBoard(aircraft) {
+      board.innerHTML = "";
+
+      Object.values(aircraft).forEach((ac) => {
+        const card = document.createElement("div");
+        card.className = `aircraft-card ${ac.status} ${ac.finalNeedsAck ? "flashing" : ""}`;
+
+        const markerText = ac.marker ? `${ac.marker} MILE` : "";
+        const typeText = ac.type || "EMPTY";
+        const intentionText = ac.intention || "";
+
+        let statusText = "";
+
+        if (ac.status === "cleared") {
+          statusText = "CLEARED";
+        } else if (ac.status === "wave-off") {
+          statusText = "WAVE OFF";
+        } else if (ac.status === "pending") {
+          statusText = "PENDING";
+        } else {
+          statusText = "EMPTY";
+        }
+
+        const localAckText = ac.localAcked
+          ? `<div class="ack-status good">LOCAL ACKED POSITION</div>`
+          : `<div class="ack-status bad">WAITING FOR LOCAL ACK</div>`;
+
+        const finalAlertText = ac.finalNeedsAck
+          ? `<div class="alert-label">${ac.finalAlertReason}</div>`
+          : "";
+
+        const ackButton = ac.finalNeedsAck
+          ? `<button class="ack-final-btn" data-id="${ac.id}">Acknowledge Local Action</button>`
+          : "";
+
+        card.innerHTML = `
+          <h3>${ac.id}</h3>
+          <div class="big">${markerText}</div>
+          <div>${typeText}</div>
+          <div>${intentionText}</div>
+          <strong>${statusText}</strong>
+
+          ${localAckText}
+          ${finalAlertText}
+
+          <div class="action-row">
+            ${ackButton}
+          </div>
+        `;
+
+        board.appendChild(card);
+      });
+
+      document.querySelectorAll(".ack-final-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          socket.emit("ackFinalAction", button.dataset.id);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

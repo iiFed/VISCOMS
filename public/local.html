@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Control</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <audio id="alertSound" src="/soft_square_buzzer_240Hz.mp3" preload="auto"></audio>
+
+  <div class="app">
+    <header>
+      <h1>Local Control</h1>
+      <p>Acknowledge position updates, clear aircraft, or wave off.</p>
+
+      <div class="header-actions">
+        <button id="enableSoundBtn" class="send-btn">Enable Sound</button>
+
+        <div id="finalOnlineStatus" class="online-status offline">
+          Final Controller: OFFLINE
+        </div>
+      </div>
+    </header>
+
+    <section class="runway-display">
+      <div class="marker-column">
+        <div class="marker-symbol">∞</div>
+        <div id="marker-infinity" class="marker-stack"></div>
+      </div>
+
+      <div class="marker-column">
+        <div class="marker-symbol">7</div>
+        <div id="marker-7" class="marker-stack"></div>
+      </div>
+
+      <div class="marker-column">
+        <div class="marker-symbol">3</div>
+        <div id="marker-3" class="marker-stack"></div>
+      </div>
+
+      <div class="marker-column">
+        <div class="marker-symbol">0</div>
+        <div id="marker-0" class="marker-stack"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Aircraft</h2>
+      <div id="localBoard" class="board"></div>
+    </section>
+
+    <section class="panel">
+      <button id="resetAllBtn" class="danger-btn">Reset All</button>
+    </section>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    socket.emit("joinRole", "local");
+
+    const localBoard = document.getElementById("localBoard");
+    const resetAllBtn = document.getElementById("resetAllBtn");
+    const enableSoundBtn = document.getElementById("enableSoundBtn");
+    const alertSound = document.getElementById("alertSound");
+    const finalOnlineStatus = document.getElementById("finalOnlineStatus");
+
+    const markerInfinity = document.getElementById("marker-infinity");
+    const marker7 = document.getElementById("marker-7");
+    const marker3 = document.getElementById("marker-3");
+    const marker0 = document.getElementById("marker-0");
+
+    let soundEnabled = false;
+    let buzzerInterval = null;
+    let lastLocalAlertVersions = {};
+
+    enableSoundBtn.addEventListener("click", async () => {
+      try {
+        soundEnabled = true;
+        alertSound.volume = 1.0;
+        await alertSound.play();
+        alertSound.pause();
+        alertSound.currentTime = 0;
+        enableSoundBtn.textContent = "Sound Enabled";
+        enableSoundBtn.disabled = true;
+      } catch (error) {
+        alert("Browser blocked sound. Click Enable Sound again.");
+      }
+    });
+
+    socket.on("onlineStatus", (status) => {
+      if (status.finalOnline) {
+        finalOnlineStatus.textContent = "Final Controller: ONLINE";
+        finalOnlineStatus.className = "online-status online";
+      } else {
+        finalOnlineStatus.textContent = "Final Controller: OFFLINE";
+        finalOnlineStatus.className = "online-status offline";
+      }
+    });
+
+    resetAllBtn.addEventListener("click", () => {
+      const confirmReset = confirm("Reset all aircraft?");
+      if (confirmReset) {
+        socket.emit("resetAll");
+      }
+    });
+
+    socket.on("aircraftState", (aircraft) => {
+      renderLocalBoard(aircraft);
+      renderMarkers(aircraft);
+      handleLocalAlerts(aircraft);
+    });
+
+    function handleLocalAlerts(aircraft) {
+      const activeAlerts = Object.values(aircraft).filter((ac) => ac.localNeedsAck);
+
+      Object.values(aircraft).forEach((ac) => {
+        if (!lastLocalAlertVersions[ac.id]) {
+          lastLocalAlertVersions[ac.id] = 0;
+        }
+
+        if (ac.localAlertVersion > lastLocalAlertVersions[ac.id]) {
+          lastLocalAlertVersions[ac.id] = ac.localAlertVersion;
+          playBuzzerOnce();
+        }
+      });
+
+      if (activeAlerts.length > 0) {
+        startRepeatingBuzzer();
+      } else {
+        stopRepeatingBuzzer();
+      }
+    }
+
+    function playBuzzerOnce() {
+      if (!soundEnabled) return;
+
+      alertSound.pause();
+      alertSound.currentTime = 0;
+      alertSound.play().catch(() => {});
+    }
+
+    function startRepeatingBuzzer() {
+      if (!soundEnabled) return;
+      if (buzzerInterval) return;
+
+      buzzerInterval = setInterval(() => {
+        playBuzzerOnce();
+      }, 1000);
+    }
+
+    function stopRepeatingBuzzer() {
+      if (buzzerInterval) {
+        clearInterval(buzzerInterval);
+        buzzerInterval = null;
+      }
+
+      alertSound.pause();
+      alertSound.currentTime = 0;
+    }
+
+    function renderLocalBoard(aircraft) {
+      localBoard.innerHTML = "";
+
+      Object.values(aircraft).forEach((ac) => {
+        const card = document.createElement("div");
+        card.className = `aircraft-card ${ac.status} ${ac.localNeedsAck ? "flashing" : ""}`;
+
+        let statusText = "";
+
+        if (ac.status === "cleared") {
+          statusText = "CLEARED";
+        } else if (ac.status === "wave-off") {
+          statusText = "WAVE OFF";
+        } else if (ac.status === "pending") {
+          statusText = "PENDING";
+        } else {
+          statusText = "EMPTY";
+        }
+
+        const markerText = ac.marker ? `${ac.marker} MILE` : "";
+        const typeText = ac.type || "EMPTY";
+        const intentionText = ac.intention || "";
+
+        const localAlertText = ac.localNeedsAck
+          ? `<div class="alert-label">${ac.localAlertReason}</div>`
+          : "";
+
+        const ackButton = ac.localNeedsAck
+          ? `<button class="ack-local-btn" data-id="${ac.id}">Acknowledge Position</button>`
+          : "";
+
+        card.innerHTML = `
+          <h3>${ac.id}</h3>
+          <div class="big">${markerText}</div>
+          <div>${typeText}</div>
+          <div>${intentionText}</div>
+          <strong>${statusText}</strong>
+
+          ${localAlertText}
+
+          <div class="action-row">
+            ${ackButton}
+            <button class="clear-btn" data-id="${ac.id}">Clear</button>
+            <button class="wave-btn" data-id="${ac.id}">Wave Off</button>
+            <button class="reset-btn" data-id="${ac.id}">Reset</button>
+          </div>
+        `;
+
+        localBoard.appendChild(card);
+      });
+
+      document.querySelectorAll(".ack-local-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          socket.emit("ackLocalUpdate", button.dataset.id);
+        });
+      });
+
+      document.querySelectorAll(".clear-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          socket.emit("localAction", {
+            id: button.dataset.id,
+            action: "clear"
+          });
+        });
+      });
+
+      document.querySelectorAll(".wave-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          socket.emit("localAction", {
+            id: button.dataset.id,
+            action: "wave-off"
+          });
+        });
+      });
+
+      document.querySelectorAll(".reset-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          socket.emit("resetAircraft", button.dataset.id);
+        });
+      });
+    }
+
+    function renderMarkers(aircraft) {
+      markerInfinity.innerHTML = "";
+      marker7.innerHTML = "";
+      marker3.innerHTML = "";
+      marker0.innerHTML = "";
+
+      Object.values(aircraft).forEach((ac) => {
+        if (!ac.marker || ac.status === "empty" || ac.status === "cleared") {
+          return;
+        }
+
+        const tag = document.createElement("div");
+        tag.className = `marker-aircraft ${ac.status} ${ac.localNeedsAck ? "flashing" : ""}`;
+
+        tag.innerHTML = `
+          <strong>${ac.id}</strong>
+          <span>${ac.type}</span>
+          <span>${ac.intention}</span>
+          ${ac.localNeedsAck ? `<span class="small-alert">ACK POSITION</span>` : ""}
+        `;
+
+        if (ac.marker === "∞") {
+          markerInfinity.appendChild(tag);
+        }
+
+        if (ac.marker === "7") {
+          marker7.appendChild(tag);
+        }
+
+        if (ac.marker === "3") {
+          marker3.appendChild(tag);
+        }
+
+        if (ac.marker === "0") {
+          marker0.appendChild(tag);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

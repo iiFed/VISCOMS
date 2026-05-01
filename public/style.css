@@ -1,0 +1,329 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #050505;
+  color: #ffe600;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.app {
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+header {
+  border: 2px solid #ffe600;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.panel {
+  border: 2px solid #ffe600;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+button {
+  background: #050505;
+  color: #ffe600;
+  border: 2px solid #ffe600;
+  padding: 16px 22px;
+  font-size: 18px;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+button:hover {
+  background: #222;
+}
+
+button.active {
+  background: #ffe600;
+  color: #050505;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.send-btn {
+  background: #ffe600;
+  color: #050505;
+  font-weight: bold;
+}
+
+.danger-btn {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.danger-btn:hover {
+  background: #330000;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+
+.aircraft-card {
+  border: 2px solid #ffe600;
+  padding: 16px;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #050505;
+  color: #ffe600;
+}
+
+.aircraft-card h3 {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.aircraft-card .big {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.aircraft-card.pending {
+  border-color: #ffe600;
+  color: #ffe600;
+}
+
+.aircraft-card.cleared {
+  border-color: #00ff66;
+  color: #00ff66;
+}
+
+.aircraft-card.wave-off {
+  border-color: #ff3333;
+  color: #ff3333;
+}
+
+.aircraft-card.empty {
+  opacity: 0.45;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.action-row button {
+  font-size: 14px;
+  min-width: auto;
+  padding: 10px 12px;
+}
+
+.clear-btn {
+  border-color: #00ff66;
+  color: #00ff66;
+}
+
+.clear-btn:hover {
+  background: #003311;
+}
+
+.wave-btn {
+  border-color: #ff3333;
+  color: #ff3333;
+}
+
+.wave-btn:hover {
+  background: #330000;
+}
+
+.reset-btn {
+  border-color: #999;
+  color: #999;
+}
+
+.reset-btn:hover {
+  background: #222;
+}
+
+.ack-final-btn,
+.ack-local-btn {
+  border-color: #00ccff;
+  color: #00ccff;
+}
+
+.ack-final-btn:hover,
+.ack-local-btn:hover {
+  background: #003344;
+}
+
+.runway-display {
+  border: 2px solid #ffe600;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  min-height: 420px;
+}
+
+.marker-column {
+  border-left: 3px solid #ffe600;
+  min-height: 360px;
+  position: relative;
+  padding-left: 14px;
+}
+
+.marker-symbol {
+  font-size: 46px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.marker-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.marker-aircraft {
+  border: 2px solid #ffe600;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #050505;
+  color: #ffe600;
+}
+
+.marker-aircraft.pending {
+  border-color: #ffe600;
+  color: #ffe600;
+}
+
+.marker-aircraft.wave-off {
+  border-color: #ff3333;
+  color: #ff3333;
+}
+
+.marker-aircraft.cleared {
+  border-color: #00ff66;
+  color: #00ff66;
+}
+
+.alert-label {
+  border: 2px solid #ff3333;
+  color: #ff3333;
+  padding: 8px;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.small-alert {
+  color: #ff3333;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.ack-status {
+  border: 2px solid;
+  padding: 8px;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.ack-status.good {
+  border-color: #00ff66;
+  color: #00ff66;
+}
+
+.ack-status.bad {
+  border-color: #ff3333;
+  color: #ff3333;
+}
+
+.online-status {
+  padding: 12px 14px;
+  border: 2px solid;
+  font-weight: bold;
+  width: fit-content;
+}
+
+.online-status.online {
+  color: #00ff66;
+  border-color: #00ff66;
+}
+
+.online-status.offline {
+  color: #ff3333;
+  border-color: #ff3333;
+}
+
+/* Flashing alert animation */
+.flashing {
+  animation: acFlash 1s steps(2, start) infinite;
+  outline: 4px solid #ffffff;
+  outline-offset: 3px;
+}
+
+@keyframes acFlash {
+  0% {
+    visibility: visible;
+  }
+
+  50% {
+    visibility: hidden;
+  }
+
+  100% {
+    visibility: visible;
+  }
+}
+
+@media (max-width: 800px) {
+  .runway-display {
+    grid-template-columns: 1fr;
+  }
+
+  button {
+    width: 100%;
+  }
+
+  .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .online-status {
+    width: 100%;
+  }
+}
